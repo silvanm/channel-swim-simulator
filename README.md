@@ -44,5 +44,7 @@ Calibration checks out: 4.5 km/h ≈ 6h52m (record pace), 3.0–3.4 km/h ≈ 9�
 
 Educational toy — not for navigation.
 
+Live: https://silvanm.github.io/channel-swim-simulator/
+
 ---
-Created 2026-08-12 · no git repo (scratchpad project)
+Updated 2026-08-12 · 6ead7e0
