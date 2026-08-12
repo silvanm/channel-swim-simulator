@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>La Manche — Channel Solo Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root {
+  --bg: #0a1220;
+  --panel: #0d1728;
+  --panel2: #101d33;
+  --line: #1d2c47;
+  --ink: #e8edf7;
+  --muted: #8fa3c4;
+  --accent: #ff6b4a;
+  --tide: #4fc3e8;
+  --cream: #f2e9d8;
+  --hist: #5680bd;
+  --grid: #24354f;
+  --ok: #6fd598;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ---------- side panel ---------- */
+aside {
+  width: 372px;
+  min-width: 372px;
+  height: 100vh;
+  overflow-y: auto;
+  background:
+    radial-gradient(1200px 500px at -30% -10%, rgba(79,195,232,0.07), transparent 60%),
+    var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 22px 22px 30px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+header h1 {
+  font-family: 'Fraunces', serif;
+  font-weight: 700;
+  font-size: 30px;
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+}
+header h1 em { color: var(--accent); font-style: normal; }
+header .sub {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-top: 7px;
+}
+#status { color: var(--muted); font-size: 10px; margin-top: 4px; }
+#status.busy { color: var(--tide); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.4; } }
+
+section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+section > h2 {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+/* controls */
+.ctl { margin-bottom: 14px; }
+.ctl label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 11px; color: var(--muted); margin-bottom: 5px;
+}
+.ctl label b { color: var(--ink); font-weight: 600; font-size: 12px; }
+.ctl .hint { font-size: 10px; color: var(--muted); margin-top: 3px; }
+input[type=range] {
+  -webkit-appearance: none; width: 100%; height: 22px; background: transparent; cursor: pointer;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  height: 3px; background: var(--line); border-radius: 2px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--bg); margin-top: -6px;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+input[type=range]:disabled::-webkit-slider-thumb { background: var(--muted); box-shadow: 0 0 0 1px var(--muted); }
+select {
+  width: 100%; background: var(--panel2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px;
+  font: inherit; font-size: 12px;
+}
+.daterow { display: flex; gap: 10px; align-items: center; }
+input[type=date] {
+  flex: 1; background: var(--panel2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px;
+  font: inherit; font-size: 12px; color-scheme: dark;
+}
+.daterow .chk {
+  display: flex; gap: 6px; align-items: center; font-size: 11px;
+  color: var(--muted); white-space: nowrap; cursor: pointer; margin: 0;
+}
+.daterow .chk input { accent-color: var(--accent); }
+.strat { display: flex; flex-direction: column; gap: 6px; }
+.strat label {
+  display: flex; gap: 9px; align-items: center; cursor: pointer;
+  background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 7px; padding: 8px 10px; font-size: 12px;
+  transition: border-color 0.15s;
+}
+.strat label:has(input:checked) { border-color: var(--accent); }
+.strat input { accent-color: var(--accent); }
+.strat .d { color: var(--muted); font-size: 10px; display: block; margin-top: 1px; }
+.manualrow { display: flex; gap: 9px; align-items: center; margin-top: 10px; font-size: 11px; color: var(--muted); }
+.manualrow input[type=checkbox] { accent-color: var(--accent); }
+
+/* passage card */
+.passage {
+  background: linear-gradient(160deg, var(--panel2), rgba(255,107,74,0.06));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.passage .lbl { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+#eta {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  font-size: 42px;
+  line-height: 1.1;
+  color: var(--ink);
+  margin: 2px 0 2px;
+}
+#eta.dnf { color: var(--accent); font-size: 28px; }
+#viewlabel { color: var(--tide); font-size: 11px; }
+#delta { color: var(--ok); font-size: 11px; margin-top: 6px; }
+#bench { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-top: 12px; }
+.grid2 .cell .k { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.grid2 .cell .v { font-size: 13px; margin-top: 1px; }
+
+/* instruments */
+.inst { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.inst .cell {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px;
+}
+.inst .k { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.inst .v { font-size: 14px; margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+#setarrow { display: inline-block; color: var(--tide); transition: transform 0.2s linear; font-size: 13px; }
+
+/* charts */
+#hist { width: 100%; height: 104px; display: block; }
+canvas#tide { width: 100%; height: 84px; display: block; }
+.chartcap { font-size: 10px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+.chartcap b { color: var(--ink); font-weight: 600; }
+
+footer {
+  margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line);
+  font-size: 9.5px; color: var(--muted); line-height: 1.6;
+}
+
+/* ---------- map area ---------- */
+main { flex: 1; position: relative; height: 100vh; }
+#map { position: absolute; inset: 0; background: var(--bg); }
+#arrows { position: absolute; inset: 0; pointer-events: none; z-index: 450; }
+.leaflet-container { font: inherit; }
+.leaflet-control-attribution { background: rgba(10,18,32,0.7) !important; color: var(--muted) !important; font-size: 9px !important; }
+.leaflet-control-attribution a { color: var(--muted) !important; }
+
+.cape-label {
+  background: transparent; border: none; box-shadow: none;
+  color: var(--cream); font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+}
+.cape-label::before { display: none; }
+.hourfix { color: var(--accent); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; transform: translate(-4px, -8px); }
+.hourfix span { font-size: 12px; }
+.hourfix i { font-style: normal; font-size: 9px; color: var(--cream); opacity: 0.85; margin-left: 2px; }
+.pin {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em;
+  color: var(--bg); background: var(--cream); border-radius: 4px;
+  padding: 2px 6px; white-space: nowrap; transform: translate(-50%, -160%);
+  font-weight: 600;
+}
+.pin-land { background: var(--accent); color: #fff; }
+
+/* time bar */
+#timebar {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  z-index: 900; display: flex; align-items: center; gap: 12px;
+  background: rgba(13,23,40,0.92); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 16px; width: min(680px, calc(100% - 40px));
+  backdrop-filter: blur(6px);
+}
+#play {
+  width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--accent); color: #fff; font-size: 15px; flex-shrink: 0;
+}
+#scrub { flex: 1; }
+#timebar .clockbox { text-align: right; min-width: 84px; }
+#timebar .clockbox .k { font-size: 8.5px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+#clock { font-size: 15px; }
+#pspeed { width: auto; font-size: 11px; padding: 5px 7px; }
+
+@media (max-width: 860px) {
+  body { flex-direction: column; overflow: auto; }
+  aside { width: 100%; min-width: 0; height: auto; order: 2; }
+  main { height: 58vh; min-height: 420px; }
+}
+</style>
+</head>
+<body>
+
+<aside>
+  <header>
+    <h1>La Manche<em>.</em></h1>
+    <div class="sub">Channel solo — tidal passage simulator</div>
+    <div id="status">ready</div>
+  </header>
+
+  <section>
+    <h2>Swimmer</h2>
+    <div class="ctl">
+      <label>Speed through water <b id="speedlabel">2.8 km/h</b></label>
+      <input type="range" id="speed" min="2.0" max="5.2" step="0.1" value="2.8">
+      <div class="hint" id="pacelabel"></div>
+    </div>
+    <div class="ctl">
+      <label>Start point</label>
+      <select id="startpt">
+        <option value="shakespeare" selected>Shakespeare Beach, Dover</option>
+        <option value="samphire">Samphire Hoe</option>
+        <option value="abbots">Abbot's Cliff</option>
+      </select>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tide</h2>
+    <div class="ctl">
+      <label>Start date <b id="mooninfo"></b></label>
+      <div class="daterow">
+        <input type="date" id="startdate">
+        <label class="chk"><input type="checkbox" id="usedate" checked> tide from date</label>
+      </div>
+      <div class="hint" id="datehint"></div>
+    </div>
+    <div class="ctl">
+      <label>Tidal range <b id="springlabel">springs</b></label>
+      <input type="range" id="springf" min="0.55" max="1.25" step="0.05" value="1.0">
+      <div class="hint">uncheck "tide from date" to set the spring–neap cycle by hand</div>
+    </div>
+    <canvas id="tide" aria-label="Mid-strait tidal stream over the swim window: alternating northeast and southwest flow, roughly sinusoidal with a 12.4 hour period. The swim interval is shaded and a cursor marks the current playback time."></canvas>
+    <div class="chartcap">Mid-strait stream (kn) · <span style="color:var(--tide)">NE-going above</span> the line, SW-going below · orange band = your swim · dark band = night</div>
+    <div class="manualrow">
+      <input type="checkbox" id="manual">
+      <span>fix start time manually</span>
+      <b id="t0label" style="color:var(--ink)"></b>
+    </div>
+    <div class="ctl" style="margin-top:6px">
+      <input type="range" id="t0slider" min="0" max="12.4" step="0.1" value="4.0" disabled>
+      <div class="hint">start time relative to High Water Dover — leave unfixed to let the optimiser choose</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Track strategy</h2>
+    <div class="strat">
+      <label><input type="radio" name="strategy" value="optimal" checked>
+        <span>Optimised track<span class="d">piecewise headings + start time, computed for your speed</span></span></label>
+      <label><input type="radio" name="strategy" value="constant">
+        <span>Best constant heading<span class="d">one compass course held the whole way</span></span></label>
+      <label><input type="radio" name="strategy" value="aim">
+        <span>Aim at Cap Gris-Nez<span class="d">always point at the target — fights the tide</span></span></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Passage plan</h2>
+    <div class="passage">
+      <div class="lbl">Crossing time</div>
+      <div id="eta">–</div>
+      <div id="viewlabel"></div>
+      <div id="delta"></div>
+      <div id="bench"></div>
+      <div class="grid2">
+        <div class="cell"><div class="k">Depart</div><div class="v" id="startTime">–</div></div>
+        <div class="cell"><div class="k">Arrive</div><div class="v" id="arrive">–</div></div>
+        <div class="cell"><div class="k">Landing</div><div class="v" id="landing">–</div></div>
+        <div class="cell"><div class="k">Landfall light</div><div class="v" id="daylight">–</div></div>
+        <div class="cell"><div class="k">Over ground</div><div class="v" id="ground">–</div></div>
+        <div class="cell"><div class="k">Through water</div><div class="v" id="water">–</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Live instruments</h2>
+    <div class="inst">
+      <div class="cell"><div class="k">Tide</div><div class="v" id="tidephase">–</div></div>
+      <div class="cell"><div class="k">Stream</div><div class="v"><span id="setarrow">➤</span><span id="current">–</span></div></div>
+      <div class="cell"><div class="k">Heading</div><div class="v" id="heading">–</div></div>
+      <div class="cell"><div class="k">SOG</div><div class="v" id="sog">–</div></div>
+      <div class="cell"><div class="k">To France</div><div class="v" id="togo">–</div></div>
+      <div class="cell"><div class="k">Elapsed</div><div class="v" id="clock2">–</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Against the record book</h2>
+    <svg id="hist" role="img" aria-label="Histogram of 3,074 recorded England to France solo crossing durations, from 6 to 24 hours, peaking near 13 hours. A dashed line marks the 13.35 hour median and an orange line marks your simulated time."></svg>
+    <div class="chartcap">
+      Durations of <b>3,074</b> ratified E→F solos (CSA/CS&amp;PF database) ·
+      dashed line = median <b>13h 21m</b> · record <b>6h 45m</b> ·
+      only <b>31.8%</b> of real solos land on Cap Gris-Nez itself
+    </div>
+  </section>
+
+  <footer>
+    Simplified M2 tidal-stream model of the Dover Strait (peak ≈1.9 kn mid-strait at
+    springs, race off Cap Gris-Nez). Optimiser solves a Zermelo-style navigation
+    problem by coordinate descent over start time and leg headings. Calendar mode
+    derives spring/neap strength from the moon phase and approximates HW Dover from
+    lunar transit (±1 h) — clock times are approximate UK local time.
+    Educational toy — not for navigation. · Benchmarks: English Channel Swim
+    Database (solos, public edition).
+  </footer>
+</aside>
+
+<main>
+  <div id="map"></div>
+  <div id="timebar">
+    <button id="play" title="play / pause">▶</button>
+    <input type="range" id="scrub" min="0" max="1" step="0.001" value="0">
+    <select id="pspeed">
+      <option value="600">600×</option>
+      <option value="1200" selected>1200×</option>
+      <option value="3000">3000×</option>
+    </select>
+    <div class="clockbox">
+      <div class="k">Elapsed</div>
+      <div id="clock">0h 00m</div>
+    </div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="sim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
