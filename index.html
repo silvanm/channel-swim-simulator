@@ -260,8 +260,12 @@ main { flex: 1; position: relative; height: 100vh; }
       <div class="hint" id="datehint"></div>
     </div>
     <div class="ctl">
+      <label>Water temperature <b id="seatemp">–</b></label>
+      <div class="hint" id="seahint"></div>
+    </div>
+    <div class="ctl">
       <label>Tidal range <b id="springlabel">springs</b></label>
-      <input type="range" id="springf" min="0.55" max="1.25" step="0.05" value="1.0">
+      <input type="range" id="springf" min="0.40" max="1.15" step="0.05" value="1.0">
       <div class="hint">uncheck "tide from date" to set the spring–neap cycle by hand</div>
     </div>
     <canvas id="tide" aria-label="Mid-strait tidal stream over the swim window: alternating northeast and southwest flow, roughly sinusoidal with a 12.4 hour period. The swim interval is shaded and a cursor marks the current playback time."></canvas>
@@ -332,10 +336,11 @@ main { flex: 1; position: relative; height: 100vh; }
 
   <footer>
     Simplified M2 tidal-stream model of the Dover Strait (peak ≈1.9 kn mid-strait at
-    springs, race off Cap Gris-Nez). Optimiser solves a Zermelo-style navigation
-    problem by coordinate descent over start time and leg headings. Calendar mode
-    derives spring/neap strength from the moon phase and approximates HW Dover from
-    lunar transit (±1 h) — clock times are approximate UK local time.
+    springs, race off Cap Gris-Nez, net NE residual). Optimiser solves a Zermelo-style
+    navigation problem by coordinate descent over start time and leg headings.
+    Calendar mode takes HW Dover and the tidal range from an M2+S2+N2 harmonic model
+    fitted to published Dover predictions (~15 min); clock times are Dover local
+    (GMT/BST). Water temperature from NASA JPL MUR SST v4.1 monthly composites.
     Educational toy — not for navigation. · Benchmarks: English Channel Swim
     Database (solos, public edition).
   </footer>

@@ -78,10 +78,15 @@
   const WIDTH = 33; // km England shore -> France shore along PERP
 
   // temporal signal: t in hours relative to HW Dover. Positive = NE-going (flood).
-  // NE stream begins ~1.5 h before HW Dover; slight flood asymmetry.
+  // The 0.15*sin(2th) term only skews the peak shape — on its own it leaves the
+  // NE and SW halves exactly 6.21 h each with zero net transport. RESIDUAL_NE is
+  // the Strait's mean NE set; it is what actually makes the NE-going stream run
+  // longer than the SW-going one (here HW-1:39 to HW+4:59, Admiralty ~HW-0130 to
+  // ~HW+0445) and leaves a net NE drift over a full cycle.
+  const RESIDUAL_NE = 0.10;   // fraction of the local peak rate (~0.2 kn mid-strait)
   function tideSignal(t) {
     const th = W * (t + 1.5);
-    return Math.sin(th) + 0.15 * Math.sin(2 * th);
+    return Math.sin(th) + 0.15 * Math.sin(2 * th) + RESIDUAL_NE;
   }
 
   // current vector (m/s east, north) at km-position p, time t hours after HW Dover
@@ -113,6 +118,7 @@
     const path = [];
     let minDistFr = Infinity;
     let landed = false, landLL = null;
+    let maxSW = 0;                      // km SW of the Cap Gris-Nez along-strait line
 
     const record = () => {
       const ll = toLL(p.x, p.y);
@@ -124,6 +130,8 @@
     while (elapsed < maxH) {
       const fr = nearestSeg(FRA_XY, p);
       if (fr.d < minDistFr) minDistFr = fr.d;
+      const along = (p.x - CAPE_XY.x) * AX.x + (p.y - CAPE_XY.y) * AX.y;
+      if (-along > maxSW) maxSW = -along;
       if (fr.d < 0.15 || fr.side <= 0) {
         landed = true;
         const ll = toLL(fr.cx, fr.cy);
@@ -157,11 +165,18 @@
 
     return {
       landed, hours: elapsed, path, landLL, distGround,
-      distWater: opts.speedMs * elapsed * 3.6, minDistFr, landedAtCape,
+      distWater: opts.speedMs * elapsed * 3.6, minDistFr, landedAtCape, maxSW,
     };
   }
 
-  const score = (r) => (r.landed ? r.hours : 100 + r.minDistFr);
+  // Straying SW of the Cap Gris-Nez line puts the swimmer in open water past the
+  // cape, where the SW-going stream sets them away from France. Pilots avoid that
+  // sector at any cost; without the penalty the optimizer happily picks the
+  // mirror-image (ebb-first) start, which scores as well as the real flood-first
+  // one because the M2 signal alone is symmetric.
+  const SW_PENALTY = 0.25;              // hours of "cost" per km SW of the cape
+  const score = (r) =>
+    (r.landed ? r.hours : 100 + r.minDistFr) + SW_PENALTY * r.maxSW;
 
   // ---- strategies ----
   const aimAtCape = () => (e, p) =>

@@ -9,39 +9,166 @@ const REAL = {
   binStart: 6,
 };
 
-// ---- calendar astronomy: moon phase -> tide strength, HW Dover, sun ----
-// Approximations good to ~1 h; all clock times are naive UK local time.
+// All clock times are Dover local (GMT/BST) regardless of the viewer's zone —
+// the HW model works in real UTC instants, so this has to be explicit.
+const UK = 'Europe/London';
+const ukParts = (ms) => {
+  const f = new Intl.DateTimeFormat('en-GB', {
+    timeZone: UK, hour12: false, year: 'numeric', month: '2-digit',
+    day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const p = {};
+  for (const x of f.formatToParts(ms)) p[x.type] = x.value;
+  return p;
+};
+const ukOffset = (ms) => {                       // ms to add to UTC to get UK time
+  const p = ukParts(ms);
+  return Date.UTC(+p.year, p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second) - ms;
+};
+// instant of 00:00 UK time on a YYYY-MM-DD date
+const ukMidnight = (dateStr) => {
+  const guess = Date.parse(dateStr + 'T00:00:00Z');
+  return guess - ukOffset(guess - ukOffset(guess));
+};
+
+// ---- calendar astronomy: HW Dover, tidal range, moon phase, sun ----
 const ASTRO = (() => {
   const SYN = 29.530588853;                       // synodic month, days
-  const NM = Date.UTC(2000, 0, 6, 18, 14);        // reference new moon
-  const TRANSIT_LAG = 0.8412;                     // h/day the moon transits later
-  const HW_INTERVAL = 11.117;                     // HW Dover ~11h07 after lunar transit
+  const D2R = Math.PI / 180;
+  const sind = (x) => Math.sin(x * D2R);
 
-  const ageAt = (ms) => (((ms - NM) / 86400000) % SYN + SYN) % SYN;
+  // --- HW Dover: semidiurnal harmonic model ---------------------------------
+  // eta(t) = Z0 + Re{ Z(t) * e^{i*wM2*t} },  Z(t) = sum_i c_i e^{i(w_i - wM2)t},
+  // so high water is where  wM2*t + arg Z(t) = 0 (mod 2pi)  and the tidal
+  // amplitude is |Z(t)|. t = hours UTC since TIDE_EPOCH.
+  //
+  // The c_i were fitted by complex least squares to 56 published Dover high
+  // waters (2026-08-15..2026-09-12). They are a *timing* fit, not Admiralty
+  // harmonic constants — Z0 and the shallow-water distortion of Dover's curve
+  // are absorbed into them, so the amplitudes are not the real M2/S2/N2 ones.
+  // Only M2, S2 and N2 are carried: over a 29-day record K2 cannot be separated
+  // from S2 nor L2 from M2 (Rayleigh criterion), and a holdout test showed that
+  // adding them overfits badly (out-of-sample RMS 16 -> 98 min with L2).
+  // Accuracy: 11.6 min RMS in-sample, ~16 min RMS / 23 min max out-of-sample.
+  // Nodal (18.6 y) modulation is not modelled, so accuracy decays slowly over
+  // years, and the fit is anchored on the Aug/Sep swim season.
+  const TIDE_EPOCH = Date.UTC(2026, 0, 1);
+  const W_M2 = 28.9841042 * D2R;                  // deg/h -> rad/h
+  const PARTS = [                                 // [speed-wM2 (rad/h), c.re, c.im]
+    [(28.9841042 - 28.9841042) * D2R, -0.567310, 1.642265],   // M2
+    [(30.0000000 - 28.9841042) * D2R, 0.805192, -0.170592],   // S2
+    [(28.4397295 - 28.9841042) * D2R, -0.239403, 0.259680],   // N2
+  ];
+  const hoursOf = (ms) => (ms - TIDE_EPOCH) / 3600e3;
 
-  // spring/neap factor, peaking ~1.8 days after new/full moon
-  function springFactor(ms) {
-    const f = 0.90 + 0.35 * Math.cos(2 * Math.PI * (ageAt(ms) - 1.8) / (SYN / 2));
-    return Math.max(0.55, Math.min(1.25, f));
+  function envelope(t) {
+    let re = 0, im = 0;
+    for (const [dw, cr, ci] of PARTS) {
+      const th = dw * t, ct = Math.cos(th), st = Math.sin(th);
+      re += cr * ct - ci * st;
+      im += cr * st + ci * ct;
+    }
+    return { mag: Math.hypot(re, im), arg: Math.atan2(im, re) };
   }
+
+  // instant (ms) of the high water nearest to `ms`
+  function hwNear(ms) {
+    let t = hoursOf(ms);
+    for (let k = 0; k < 25; k++) {
+      let ph = W_M2 * t + envelope(t).arg;
+      ph = ((ph + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+      t -= ph / W_M2;
+      if (Math.abs(ph) < 1e-11) break;
+    }
+    return TIDE_EPOCH + t * 3600e3;
+  }
+
+  // HW Dover instants (ms) spanning the day around `dayStartMs`
+  function hwTimes(dayStartMs) {
+    const first = hwNear(dayStartMs + 12 * 3600e3);
+    const out = [];
+    for (let k = -4; k <= 4; k++) {
+      const h = hwNear(first + k * SIM.T_M2 * 3600e3);
+      if (!out.some((o) => Math.abs(o - h) < 3600e3)) out.push(h);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  // --- tidal range -> stream strength ---------------------------------------
+  // Tidal stream rates scale with the tidal range (standard Admiralty
+  // interpolation). |Z| -> range fitted on the same 56 HW/LW pairs
+  // (RMS 0.19 m); MEAN_SPRING_RANGE is the largest range in that record, so the
+  // factor is 1.0 at mean springs and ~0.41 at mean neaps — which is what the
+  // sim's `spring` multiplier expects (1.0 = mean-spring peak rates).
+  const RANGE_A = 1.4104, RANGE_B = 1.7609, MEAN_SPRING_RANGE = 6.16;
+  const rangeAt = (ms) => RANGE_A + RANGE_B * envelope(hoursOf(hwNear(ms))).mag;
+  function springFactor(ms) {
+    return Math.max(0.35, Math.min(1.15, rangeAt(ms) / MEAN_SPRING_RANGE));
+  }
+
+  // --- moon phase (display only) --------------------------------------------
+  // Moon-Sun elongation from Schlyter's low-precision lunar series; reproduces
+  // the 2026 new/full moons to within ~10 min (the old mean-synodic formula was
+  // out by up to 15 h, enough to mislabel the phase).
+  function elongation(ms) {
+    const d = (ms - Date.UTC(2000, 0, 1, 12)) / 86400000;
+    const Ms = 357.5291 + 0.98560028 * d;
+    const Ls = 280.4665 + 0.98564736 * d;
+    const sunLon = Ls + 1.9147 * sind(Ms) + 0.0200 * sind(2 * Ms) + 0.0003 * sind(3 * Ms);
+    const Lm = 218.3164 + 13.17639648 * d;
+    const Mm = 134.9634 + 13.06499295 * d;
+    const De = 297.8502 + 12.19074912 * d;
+    const F = 93.2721 + 13.22935024 * d;
+    const moonLon = Lm
+      + 6.289 * sind(Mm) - 1.274 * sind(Mm - 2 * De) + 0.658 * sind(2 * De)
+      + 0.214 * sind(2 * Mm) - 0.186 * sind(Ms) - 0.114 * sind(2 * F)
+      - 0.059 * sind(2 * Mm - 2 * De) - 0.057 * sind(Mm - 2 * De + Ms)
+      + 0.053 * sind(Mm + 2 * De) + 0.046 * sind(2 * De - Ms) + 0.041 * sind(Mm - Ms)
+      - 0.035 * sind(De) - 0.031 * sind(Mm + Ms) - 0.015 * sind(2 * F - 2 * De)
+      + 0.011 * sind(Mm - 4 * De);
+    return ((moonLon - sunLon) % 360 + 360) % 360;
+  }
+  const ageAt = (ms) => elongation(ms) / 360 * SYN;
+
   function moonInfo(ms) {
-    const a = ageAt(ms);
+    const e = elongation(ms);
     const names = ['new moon', 'waxing crescent', 'first quarter', 'waxing gibbous',
       'full moon', 'waning gibbous', 'last quarter', 'waning crescent'];
     const emo = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
-    const i = Math.round(a / SYN * 8) % 8;
-    return { age: a, name: names[i], emoji: emo[i] };
+    const i = Math.round(e / 45) % 8;
+    return { age: ageAt(ms), name: names[i], emoji: emo[i] };
   }
-  // HW Dover instants (ms) around a local date midnight
-  function hwTimes(dayStartMs) {
-    const a = ageAt(dayStartMs + 12 * 3600e3);
-    const transitH = (12 + a * TRANSIT_LAG) % 24;
-    const anchor = dayStartMs + (transitH + HW_INTERVAL) * 3600e3;
-    const P = SIM.T_M2 * 3600e3;
-    const out = [];
-    for (let k = -4; k <= 4; k++) out.push(anchor + k * P);
-    return out;
+  // --- expected sea temperature --------------------------------------------
+  // NASA JPL MUR SST v4.1 (1 km, L4) monthly composites, area-averaged over the
+  // route box 50.85–51.15 N / 1.30–1.95 E, 2015–2026 (see the ERDDAP script and
+  // kanal_sst_monatsmittel.csv). Per month: [expected, min, max] in °C.
+  // "Expected" is the mean of the five most recent years, not the median of all
+  // twelve: the record carries a clear warming trend (~+1.0 °C/decade over
+  // Jun–Sep), so an all-year median would sit ~0.5 °C low for a swim today. The
+  // min/max are the full observed spread and are what the uncertainty is.
+  const SST = [
+    [9.27, 7.6, 10.5], [8.58, 7.4, 9.2], [8.84, 6.6, 9.6], [10.10, 8.1, 10.7],
+    [12.51, 10.3, 13.0], [15.12, 14.1, 15.8], [17.90, 16.2, 19.2],
+    [18.72, 17.5, 19.8], [18.44, 17.1, 19.1], [16.48, 15.2, 17.3],
+    [14.13, 13.0, 15.1], [11.06, 10.0, 12.2],
+  ];
+  const DIM = [31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  // Catmull-Rom through the twelve monthly values, which sit at mid-month, so
+  // the curve is smooth across month boundaries instead of stepping.
+  function seaTemp(ms) {
+    const p = ukParts(ms);
+    const mi = +p.month - 1;
+    const f = mi + (+p.day - 0.5) / DIM[mi] - 0.5;   // sample i sits at f = i
+    const i = Math.floor(f), u = f - i;
+    const at = (k, j) => SST[((k % 12) + 12) % 12][j];
+    const spline = (j) => {
+      const a = at(i - 1, j), b = at(i, j), c = at(i + 1, j), d = at(i + 2, j);
+      return 0.5 * ((2 * b) + (c - a) * u + (2 * a - 5 * b + 4 * c - d) * u * u
+        + (-a + 3 * b - 3 * c + d) * u * u * u);
+    };
+    return { c: spline(0), lo: spline(1), hi: spline(2) };
   }
+
   function sun(dayStartMs) {
     const d = new Date(dayStartMs);
     const start = new Date(d.getFullYear(), 0, 0);
@@ -53,8 +180,13 @@ const ASTRO = (() => {
     const noonH = 12.92;                          // solar noon Dover in BST
     return { rise: noonH - half, set: noonH + half };
   }
-  return { ageAt, springFactor, moonInfo, hwTimes, sun };
+  return { ageAt, springFactor, rangeAt, moonInfo, hwTimes, hwNear, seaTemp, sun };
 })();
+
+// label for a stream-strength multiplier (1.0 = mean springs, ~0.41 = mean neaps)
+const rangeLabel = (f) =>
+  f < 0.55 ? 'neaps' : f < 0.75 ? 'towards neaps' : f < 0.92 ? 'mid-cycle'
+    : f < 1.02 ? 'springs' : 'big springs';
 
 const todayStr = () => {
   const d = new Date();
@@ -82,8 +214,8 @@ const state = {
 const $ = (id) => document.getElementById(id);
 const fmtH = (h) => `${Math.floor(h)}h ${String(Math.round((h % 1) * 60)).padStart(2, '0')}m`;
 const fmtClock = (ms) => {
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const p = ukParts(ms);
+  return `${p.hour === '24' ? '00' : p.hour}:${p.minute}`;
 };
 const fmtHW = (t) => {
   let x = ((t % SIM.T_M2) + SIM.T_M2) % SIM.T_M2;
@@ -219,28 +351,35 @@ function clockFor(t0) {
 
 function applyDate() {
   if (!state.useDate) { state.astro = null; return; }
-  const dayStart = Date.parse(state.dateStr + 'T00:00:00');
+  const dayStart = ukMidnight(state.dateStr);
   const noon = dayStart + 12 * 3600e3;
   state.astro = {
     dayStart,
     hws: ASTRO.hwTimes(dayStart),
     sun: ASTRO.sun(dayStart),
     moon: ASTRO.moonInfo(noon),
+    sea: ASTRO.seaTemp(noon),
   };
   state.spring = ASTRO.springFactor(noon);
   const sf = $('springf');
   sf.value = state.spring;
-  $('springlabel').textContent =
-    (state.spring < 0.75 ? 'neaps' : state.spring > 1.1 ? 'big springs' : state.spring > 0.95 ? 'springs' : 'mid-cycle') + ' · from date';
+  $('springlabel').textContent = rangeLabel(state.spring) + ' · from date';
   const m = state.astro.moon;
   $('mooninfo').textContent = `${m.emoji} ${m.name}`;
   const dayHW = state.astro.hws.filter(h => h >= dayStart && h < dayStart + 86400e3);
   const s = state.astro.sun;
   const fh = (h) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round(h % 1 * 60)).padStart(2, '0')}`;
-  const month = new Date(dayStart).getMonth() + 1;
+  const month = +ukParts(dayStart + 12 * 3600e3).month;
+  const t = state.astro.sea;
   $('datehint').textContent =
     `HW Dover ≈ ${dayHW.map(fmtClock).join(' / ')} · sunrise ${fh(s.rise)} · sunset ${fh(s.set)}` +
     (month >= 6 && month <= 9 ? '' : ' · outside the usual Jun–Sep season');
+  $('seatemp').textContent = `${t.c.toFixed(1)} °C`;
+  $('seahint').textContent =
+    `sea surface, route average · 2015–2026 spread ${t.lo.toFixed(1)}–${t.hi.toFixed(1)} °C · ` +
+    (t.c < 14 ? 'cold even by Channel standards'
+      : t.c < 16 ? 'cool — early- or late-season water'
+        : 'typical for the Jun–Sep window');
 }
 
 function compute() {
@@ -532,17 +671,17 @@ function bind() {
     if (!state.useDate) {
       $('mooninfo').textContent = '';
       $('datehint').textContent = '';
+      $('seatemp').textContent = '–';
+      $('seahint').textContent = 'pick a date to get the expected water temperature';
       state.spring = +$('springf').value;
-      $('springlabel').textContent =
-        state.spring < 0.75 ? 'neaps' : state.spring > 1.1 ? 'big springs' : state.spring > 0.95 ? 'springs' : 'mid-cycle';
+      $('springlabel').textContent = rangeLabel(state.spring);
     }
     requestCompute();
   });
   const spring = $('springf');
   spring.addEventListener('input', () => {
     state.spring = +spring.value;
-    $('springlabel').textContent =
-      state.spring < 0.75 ? 'neaps' : state.spring > 1.1 ? 'big springs' : state.spring > 0.95 ? 'springs' : 'mid-cycle';
+    $('springlabel').textContent = rangeLabel(state.spring);
     requestCompute();
   });
   $('startpt').addEventListener('change', (e) => { state.startKey = e.target.value; requestCompute(); });
