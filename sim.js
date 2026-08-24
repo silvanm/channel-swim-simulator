@@ -222,8 +222,6 @@
     NE_PENALTY * Math.max(0, r.landNE - NE_FREE);
 
   // ---- strategies ----
-  const aimAtCape = () => (e, p) =>
-    Math.atan2(CAPE_XY.x - p.x, CAPE_XY.y - p.y);
   const constHeading = (deg) => () => deg * Math.PI / 180;
 
   const LEG_H = 1.25, N_LEGS = 14;
@@ -233,8 +231,8 @@
   };
 
   // ---- optimizer ----
-  // Finds, for a given swim speed & tide strength: best constant-heading track,
-  // best aim-at-cape start time, and a piecewise-heading refined "optimal" track.
+  // Finds, for a given swim speed & tide strength, the best constant-heading
+  // track and the piecewise-heading "optimal" track refined from it.
   //
   // The score surface over (start time, heading) is bimodal, and the two wells
   // sit only minutes apart. One lands on Cap Gris-Nez; the other slides past it
@@ -375,24 +373,13 @@
     }
     const optimal = { legsDeg: bestOpt.legsDeg, t0: bestOpt.t0, result: bestOpt.result };
 
-    // aim-at-cape reference, own best start time
-    let aim = { s: Infinity, t0: 0, r: null };
-    const aimT0 = fixedT0 != null
-      ? [fixedT0]
-      : Array.from({ length: 50 }, (_, i) => i * T_M2 / 50);
-    for (const t0 of aimT0) {
-      const r = run(t0, aimAtCape());
-      const s = score(r);
-      if (s < aim.s) aim = { s, t0, r };
-    }
-
-    return { constant, optimal, aim: { t0: wrapT0(aim.t0), result: aim.r } };
+    return { constant, optimal };
   }
 
   return {
     KN, T_M2, ORIGIN, ENGLAND, FRANCE, CAPE, START_POINTS,
     toXY, toLL, isWater, nearestSeg, ENG_XY, FRA_XY,
     tideSignal, current, simulate, optimize,
-    aimAtCape, constHeading, legHeading, LEG_H, N_LEGS,
+    constHeading, legHeading, LEG_H, N_LEGS,
   };
 });

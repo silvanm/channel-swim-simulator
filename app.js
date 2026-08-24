@@ -200,12 +200,10 @@ const state = {
   speedKmh: 2.8,
   spring: 1.0,
   startKey: 'shakespeare',
-  strategy: 'optimal',
   manualStart: false,
   t0Manual: 4.0,
   results: null,      // output of SIM.optimize
-  view: null,         // currently displayed run {result, t0, headingFn, label}
-  ghost: null,
+  view: null,         // the optimised run {result, t0, headingFn}
   playing: false,
   simT: 0,            // hours since start of swim
   playSpeed: 1200,
@@ -296,7 +294,6 @@ map.on('move zoom resize viewreset', drawArrows);
 
 // ---- path layers ----
 const layers = {
-  ghost: L.polyline([], { color: '#8fa3c4', weight: 1.5, opacity: 0.55, dashArray: '5 6', interactive: false }).addTo(map),
   full: L.polyline([], { color: '#ff6b4a', weight: 1.5, opacity: 0.3, interactive: false }).addTo(map),
   trail: L.polyline([], { color: '#ff6b4a', weight: 2.5, opacity: 0.95, interactive: false }).addTo(map),
   ticks: L.layerGroup().addTo(map),
@@ -387,14 +384,8 @@ function compute() {
   const start = SIM.START_POINTS[state.startKey];
   const cfg = { startLL: start, speedMs: state.speedKmh / 3.6, spring: state.spring };
   state.results = SIM.optimize(cfg, state.manualStart ? state.t0Manual : null);
-  const R = state.results;
-  const pick = {
-    optimal: { result: R.optimal.result, t0: R.optimal.t0, headingFn: SIM.legHeading(R.optimal.legsDeg), label: 'Optimised track' },
-    constant: { result: R.constant.result, t0: R.constant.t0, headingFn: SIM.constHeading(R.constant.headingDeg), label: `Constant heading ${Math.round(R.constant.headingDeg)}°` },
-    aim: { result: R.aim.result, t0: R.aim.t0, headingFn: SIM.aimAtCape(), label: 'Aim at Cap Gris-Nez' },
-  };
-  state.view = pick[state.strategy];
-  state.ghost = state.strategy === 'aim' ? pick.optimal : pick.aim;
+  const O = state.results.optimal;
+  state.view = { result: O.result, t0: O.t0, headingFn: SIM.legHeading(O.legsDeg) };
   state.simT = 0;
   state.playing = false;
   $('play').textContent = '▶';
@@ -409,7 +400,6 @@ function renderAll() {
   const start = SIM.START_POINTS[state.startKey];
 
   layers.full.setLatLngs(r.path.map(p => [p.lat, p.lng]));
-  layers.ghost.setLatLngs(state.ghost.result.path.map(p => [p.lat, p.lng]));
   layers.ticks.clearLayers();
   for (let h = 1; h < r.hours; h++) {
     const p = posAt(r.path, h);
@@ -425,7 +415,6 @@ function renderAll() {
   // headline stats
   $('eta').textContent = r.landed ? fmtH(r.hours) : 'no landfall';
   $('eta').classList.toggle('dnf', !r.landed);
-  $('viewlabel').textContent = v.label;
   if (state.useDate && state.astro) {
     v.clockStart = clockFor(v.t0);
     $('startTime').textContent = `${fmtClock(v.clockStart)} · ${fmtHW(v.t0)}`;
@@ -451,14 +440,6 @@ function renderAll() {
   $('landing').textContent = r.landed
     ? (r.landedAtCape ? 'Cap Gris-Nez' : `${r.landLL.lat.toFixed(3)}°N ${r.landLL.lng.toFixed(3)}°E`)
     : 'swept past — swim faster or retime';
-  const g = state.ghost.result;
-  if (r.landed && g.landed) {
-    const d = g.hours - r.hours;
-    $('delta').textContent = state.strategy === 'aim'
-      ? `${fmtH(Math.abs(d))} slower than the optimised track`
-      : `saves ${fmtH(Math.abs(d))} vs aiming at the cape`;
-  } else $('delta').textContent = '';
-
   // benchmark
   if (r.landed) {
     let below = 0, total = 0;
@@ -685,8 +666,6 @@ function bind() {
     requestCompute();
   });
   $('startpt').addEventListener('change', (e) => { state.startKey = e.target.value; requestCompute(); });
-  document.querySelectorAll('input[name=strategy]').forEach(el =>
-    el.addEventListener('change', () => { state.strategy = el.value; compute(); }));
   const manual = $('manual');
   const t0s = $('t0slider');
   manual.addEventListener('change', () => {

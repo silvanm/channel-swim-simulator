@@ -116,16 +116,6 @@ input[type=date] {
   color: var(--muted); white-space: nowrap; cursor: pointer; margin: 0;
 }
 .daterow .chk input { accent-color: var(--accent); }
-.strat { display: flex; flex-direction: column; gap: 6px; }
-.strat label {
-  display: flex; gap: 9px; align-items: center; cursor: pointer;
-  background: var(--panel2); border: 1px solid var(--line);
-  border-radius: 7px; padding: 8px 10px; font-size: 12px;
-  transition: border-color 0.15s;
-}
-.strat label:has(input:checked) { border-color: var(--accent); }
-.strat input { accent-color: var(--accent); }
-.strat .d { color: var(--muted); font-size: 10px; display: block; margin-top: 1px; }
 .manualrow { display: flex; gap: 9px; align-items: center; margin-top: 10px; font-size: 11px; color: var(--muted); }
 .manualrow input[type=checkbox] { accent-color: var(--accent); }
 
@@ -146,8 +136,6 @@ input[type=date] {
   margin: 2px 0 2px;
 }
 #eta.dnf { color: var(--accent); font-size: 28px; }
-#viewlabel { color: var(--tide); font-size: 11px; }
-#delta { color: var(--ok); font-size: 11px; margin-top: 6px; }
 #bench { color: var(--muted); font-size: 11px; margin-top: 2px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-top: 12px; }
 .grid2 .cell .k { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
@@ -282,24 +270,10 @@ main { flex: 1; position: relative; height: 100vh; }
   </section>
 
   <section>
-    <h2>Track strategy</h2>
-    <div class="strat">
-      <label><input type="radio" name="strategy" value="optimal" checked>
-        <span>Optimised track<span class="d">piecewise headings + start time, computed for your speed</span></span></label>
-      <label><input type="radio" name="strategy" value="constant">
-        <span>Best constant heading<span class="d">one compass course held the whole way</span></span></label>
-      <label><input type="radio" name="strategy" value="aim">
-        <span>Aim at Cap Gris-Nez<span class="d">always point at the target — fights the tide</span></span></label>
-    </div>
-  </section>
-
-  <section>
     <h2>Passage plan</h2>
     <div class="passage">
       <div class="lbl">Crossing time</div>
       <div id="eta">–</div>
-      <div id="viewlabel"></div>
-      <div id="delta"></div>
       <div id="bench"></div>
       <div class="grid2">
         <div class="cell"><div class="k">Depart</div><div class="v" id="startTime">–</div></div>
