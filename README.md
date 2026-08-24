@@ -28,8 +28,24 @@ everything else is local).
 - **Optimiser** — Zermelo-style navigation solved pragmatically: grid search
   over start time (relative to HW Dover) and constant heading, then coordinate
   descent over 14 piecewise leg headings. Compare against "aim at Cap Gris-Nez".
+  The search is **multi-start**, which matters: the score surface over (start
+  time, heading) is bimodal. One well lands on Cap Gris-Nez, the other slides
+  past it into Wissant bay, and the two sit minutes apart with a ridge between
+  them — at 2.4 km/h on springs, HW+9:19, the headings score 136° → 14.73 h
+  (Wissant) but 146° → 14.43 h (the cape), with 140° → 14.88 h in between.
+  Following the single best grid cell downhill therefore settled in whichever
+  well the grid happened to sample better and could never cross back, which is
+  how the Cap Gris-Nez track went missing for some speed/tide combinations. So
+  every local minimum of the grid is kept as a seed, refined, and run through
+  its own coordinate descent; the best result wins.
   The score penalises straying SW of the Cap Gris-Nez line, the sector where the
-  SW stream sets a swimmer away from France and pilots refuse to go.
+  SW stream sets a swimmer away from France and pilots refuse to go, and at the
+  same rate a landfall more than 8 km NE of it. The cape is the nearest point of
+  France and the target every crossing is planned around; Wissant bay behind it
+  is the normal fallback; past that the swimmer is into the Calais approaches
+  being carried towards the North Sea. Without the NE half the penalty was
+  one-sided, and a coin-flip between two landings minutes apart over an 11 h
+  crossing kept resolving towards Sangatte.
 - **Benchmark** — histogram of 3,074 ratified E→F solos from the public English
   Channel Swim Database (median 13h21m, record 6h45m, 31.8% land on the cape);
   your simulated time is placed on it.
@@ -52,12 +68,14 @@ Calibration checks out: 4.5 km/h ≈ 6h52m (record pace), 3.0–3.4 km/h ≈ 9�
 
 Validated against a real swim — Bronagh Marley, 14 Aug 2026, Shakespeare Beach →
 Cap Gris-Nez in 11h22m starting 00:42 BST (HW−0:15). At 3.1 km/h the optimiser
-picks a 01:38 start (HW+0:58) and lands at Cap Gris-Nez after 10h53m, and forcing
-the real start time reproduces her track shape (east on the flood, then south).
+picks a 01:39 start (HW+0:58) and lands at Cap Gris-Nez after 10h54m; forcing her
+real start time gives 11h07m to the cape with the same track shape (east on the
+flood, then south).
 
 ## Files
 
 - `sim.js` — physics, integrator, optimiser (also loadable in node for tests)
+- `test.js` — regression tests for the optimiser: `node test.js` (~45 s)
 - `app.js` — Leaflet map, tide-arrow overlay, playback, instruments, charts
 - `index.html` — UI shell and styling
 - `260813 Kanal _ SST-Zeitreihe ERDDAP.py` — pulls the MUR SST series from NOAA
@@ -68,4 +86,4 @@ Educational toy — not for navigation.
 Live: https://silvanm.github.io/channel-swim-simulator/
 
 ---
-Updated 2026-08-15 · 94dd303
+Updated 2026-08-24 · PENDING_SHA
