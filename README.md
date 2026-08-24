@@ -36,8 +36,9 @@ everything else is local).
   Following the single best grid cell downhill therefore settled in whichever
   well the grid happened to sample better and could never cross back, which is
   how the Cap Gris-Nez track went missing for some speed/tide combinations. So
-  every local minimum of the grid is kept as a seed, refined, and run through
-  its own coordinate descent; the best result wins.
+  the search seeds from the best four separated local minima of the grid rather
+  than the single best cell; each is refined and run through its own coordinate
+  descent, and the best result wins.
   The score penalises straying SW of the Cap Gris-Nez line, the sector where the
   SW stream sets a swimmer away from France and pilots refuse to go, and at the
   same rate a landfall more than 8 km NE of it. The cape is the nearest point of

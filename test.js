@@ -69,7 +69,9 @@ function bestConstant(kmh, spring, t0) {
 //    swimmer is being carried towards the North Sea.
 {
   let worst = { ne: -Infinity };
-  for (let kmh = 2.0; kmh <= 4.6; kmh += 0.2) {
+  // tenths as the loop index: `kmh += 0.2` accumulates error and stops at 4.4
+  for (let tenths = 20; tenths <= 46; tenths += 2) {
+    const kmh = tenths / 10;
     for (const spring of [0.41, 0.7, 1.0, 1.2]) {
       const r = SIM.optimize(cfg(kmh, spring), null).optimal.result;
       if (!r.landed) { worst = { ne: Infinity, kmh, spring }; break; }

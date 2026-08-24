@@ -238,21 +238,23 @@
   // best-of-grid pick followed by one local polish therefore locks onto
   // whichever well the grid happened to sample better and can never cross back,
   // which is why the cape solution used to go missing for some speed/tide
-  // combinations. So: keep *every* local minimum of the coarse grid as a seed,
+  // combinations. So: seed the search from the best few separated local minima
+  // of the coarse grid — N_SEEDS of them, not just the single best cell —
   // refine each one, and let them compete.
   //
   // The grid only has to resolve the wells, not their bottoms — the polish and
   // the coordinate descent do that. The wells sit ~10 deg apart.
   const TH_LO = 95, TH_HI = 215, TH_STEP = 4;
   const N_T0 = 16;                 // start-time samples over one M2 cycle
-  const N_SEEDS = 4;               // wells kept from the grid
+  const N_SEEDS = 4;               // most wells the grid may hand on as seeds
   const SEED_MARGIN = 0.75;        // h — wells this far behind the best are hopeless
 
-  // Local minima of a 2-D score grid, best first. Rows are start times (cyclic
-  // when the grid spans a whole tidal cycle), columns headings (not cyclic).
-  // Ties count as minima, so a flat plateau yields cells rather than none; the
-  // separation filter then keeps only the best of each cluster, so one plateau
-  // cannot crowd a genuinely different well out of the seed list.
+  // The best `limit` local minima of a 2-D score grid, best first. Rows are
+  // start times (cyclic when the grid spans a whole tidal cycle), columns
+  // headings (not cyclic). Ties count as minima, so a flat plateau yields cells
+  // rather than none; the separation filter then keeps only the best of each
+  // cluster, so one plateau cannot crowd a genuinely different well out of the
+  // seed list.
   function gridSeeds(grid, cyclicRows, limit) {
     const nR = grid.length, nC = grid[0].length, mins = [];
     for (let i = 0; i < nR; i++) {
@@ -299,17 +301,13 @@
     const thList = [];
     for (let th = TH_LO; th <= TH_HI; th += TH_STEP) thList.push(th);
 
-    // stage 1: constant-heading grid, then one seed per well. Headings far off
-    // the mark wander for 30+ h before hitting France somewhere near Gravelines;
-    // capping them at comfortably more than the best crossing found so far keeps
-    // the grid affordable without changing which cells come out as wells (a
-    // truncated track scores 100+, so it can never outrank a real crossing).
-    let cap = 40;
-    const grid = t0List.map(t0 => thList.map(th => {
-      const r = simulate({ ...base, t0: wrapT0(t0), headingFn: constHeading(th), maxHours: cap });
-      if (r.landed) cap = Math.min(cap, r.hours * 1.6 + 1);
-      return score(r);
-    }));
+    // stage 1: constant-heading grid, then one seed per well. Every cell runs to
+    // the full horizon: shortening it once some earlier cell has landed would
+    // score a late-landing cell as a non-crossing (100+) and drop its well
+    // outright, and which cells that hits would depend on traversal order —
+    // the same silent well loss this whole rewrite is here to stop. It bought
+    // ~13% of the search; not worth it.
+    const grid = t0List.map(t0 => thList.map(th => score(run(t0, constHeading(th)))));
     const seeds = gridSeeds(grid, fixedT0 == null, N_SEEDS);
 
     // stage 1b: polish each seed inside its own well by successive halving
