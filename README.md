@@ -41,12 +41,13 @@ everything else is local).
   descent, and the best result wins.
   The score penalises straying SW of the Cap Gris-Nez line, the sector where the
   SW stream sets a swimmer away from France and pilots refuse to go, and at the
-  same rate a landfall more than 8 km NE of it. The cape is the nearest point of
-  France and the target every crossing is planned around; Wissant bay behind it
-  is the normal fallback; past that the swimmer is into the Calais approaches
-  being carried towards the North Sea. Without the NE half the penalty was
-  one-sided, and a coin-flip between two landings minutes apart over an 11 h
-  crossing kept resolving towards Sangatte.
+  same rate a landfall NE of it — symmetric about the cape, with a dead zone no
+  wider than the 1.5 km radius that already counts as landing on it. The cape is
+  the nearest point of France and the target every crossing is planned around,
+  and holding it is close to free: across the speed/tide grid it costs nothing at
+  all in two thirds of cases and at most 18 min anywhere. The penalty stays soft,
+  so a swimmer who genuinely cannot hold the cape still lands in Wissant bay
+  behind it rather than nowhere.
 - **Benchmark** — histogram of 3,074 ratified E→F solos from the public English
   Channel Swim Database (median 13h21m, record 6h45m, 31.8% land on the cape);
   your simulated time is placed on it.
@@ -69,7 +70,7 @@ Calibration checks out: 4.5 km/h ≈ 6h52m (record pace), 3.0–3.4 km/h ≈ 9�
 
 Validated against a real swim — Bronagh Marley, 14 Aug 2026, Shakespeare Beach →
 Cap Gris-Nez in 11h22m starting 00:42 BST (HW−0:15). At 3.1 km/h the optimiser
-picks a 01:39 start (HW+0:58) and lands at Cap Gris-Nez after 10h54m; forcing her
+picks a 01:28 start (HW+0:47) and lands at Cap Gris-Nez after 10h54m; forcing her
 real start time gives 11h07m to the cape with the same track shape (east on the
 flood, then south).
 
@@ -87,4 +88,4 @@ Educational toy — not for navigation.
 Live: https://silvanm.github.io/channel-swim-simulator/
 
 ---
-Updated 2026-08-24 · 6e2bae7
+Updated 2026-08-24 · PENDING_SHA

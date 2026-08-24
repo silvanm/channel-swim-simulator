@@ -203,12 +203,18 @@
   const SW_PENALTY = 0.25;              // hours of "cost" per km SW of the cape
   // Overshooting NE past the cape is the other half of the same preference, and
   // used to cost nothing. Cap Gris-Nez is the nearest point of France and the
-  // target every crossing is planned around; Wissant bay behind it is the normal
-  // fallback, so the first 8 km are free. Past that the swimmer is into the
-  // Calais approaches, being carried towards the North Sea — a place pilots plan
-  // against, not towards. Without this the two landings differ by minutes over a
-  // 11 h crossing and the optimizer resolves a coin-flip towards Sangatte.
-  const NE_FREE = 8.0;                  // km NE of the cape line, i.e. Wissant bay
+  // target every crossing is planned around, so the penalty is symmetric about
+  // it: same 0.25 h/km as the SW side, with a dead zone no wider than the radius
+  // that already counts as landing on the cape.
+  //
+  // An earlier version left the whole of Wissant bay (8 km) free, on the
+  // grounds that it is the normal fallback landing. That was miscalibrated:
+  // holding the cape instead costs nothing at all in two thirds of the
+  // speed/tide grid and at most 18 min anywhere in it, so the free zone bought
+  // no realism and just handed the bay every crossing it happened to win by a
+  // quarter of an hour. The penalty stays soft — a swimmer who genuinely cannot
+  // hold the cape still lands in the bay rather than nowhere.
+  const NE_FREE = 1.5;                  // km NE of the cape line — the cape's own radius
   const NE_PENALTY = 0.25;              // hours per km beyond that
   const score = (r) =>
     (r.landed ? r.hours : 100 + r.minDistFr) +

@@ -17,7 +17,7 @@ function check(name, ok, detail) {
 }
 
 // mirror of the optimizer's own objective
-const SW_PENALTY = 0.25, NE_FREE = 8.0, NE_PENALTY = 0.25;
+const SW_PENALTY = 0.25, NE_FREE = 1.5, NE_PENALTY = 0.25;
 const score = (r) =>
   (r.landed ? r.hours : 100 + r.minDistFr) +
   SW_PENALTY * r.maxSW + NE_PENALTY * Math.max(0, r.landNE - NE_FREE);
@@ -64,22 +64,23 @@ function bestConstant(kmh, spring, t0) {
     `in ${r.hours.toFixed(2)} h`);
 }
 
-// 3. no optimal track should end up in the Calais approaches. Wissant bay
-//    (~7.5 km NE of the cape) is the normal fallback landing; past that the
-//    swimmer is being carried towards the North Sea.
-{
+// 3. every strategy the UI can show should land on the cape. Checking only the
+//    optimised track missed this once already: the constant-heading track is a
+//    separate answer with its own landfall, and that is the one the UI was
+//    showing when a landing 7.5 km up the coast in Wissant bay turned up.
+for (const strategy of ['optimal', 'constant']) {
   let worst = { ne: -Infinity };
   // tenths as the loop index: `kmh += 0.2` accumulates error and stops at 4.4
   for (let tenths = 20; tenths <= 46; tenths += 2) {
     const kmh = tenths / 10;
     for (const spring of [0.41, 0.7, 1.0, 1.2]) {
-      const r = SIM.optimize(cfg(kmh, spring), null).optimal.result;
+      const r = SIM.optimize(cfg(kmh, spring), null)[strategy].result;
       if (!r.landed) { worst = { ne: Infinity, kmh, spring }; break; }
       if (r.landNE > worst.ne) worst = { ne: r.landNE, kmh, spring };
     }
   }
-  check('optimal track always lands at the cape or in Wissant bay',
-    worst.ne <= NE_FREE + 0.5,
+  check(`${strategy} track always lands on Cap Gris-Nez`,
+    worst.ne <= NE_FREE,
     `furthest landfall ${worst.ne.toFixed(1)} km NE of the cape line ` +
     `at ${worst.kmh.toFixed(1)} km/h, spring ${worst.spring}`);
 }
