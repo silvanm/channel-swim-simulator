@@ -228,8 +228,13 @@ const fmtHW = (t) => {
 const map = L.map('map', { zoomControl: false, attributionControl: true })
   .setView([50.99, 1.45], 10);
 L.control.zoom({ position: 'topright' }).addTo(map);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '&copy; OpenStreetMap &copy; CARTO',
+// CARTO basemap key. Client-side and therefore public by nature — it ships in
+// this file to every visitor, so it is a usage identifier, not a secret. Free up
+// to 5M tile requests a month, on condition the CARTO and OpenStreetMap
+// attribution below stays visible.
+const CARTO_KEY = 'cb1_2c2i_1_1ce4efe5c245f87b5e9ee326';
+L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   maxZoom: 15,
 }).addTo(map);
 
