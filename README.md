@@ -25,6 +25,26 @@ everything else is local).
 - **Simulator** — RK2 integration of swimmer velocity (adjustable speed through
   water) plus the current field; landfall detected against a simplified French
   coastline (landing anywhere counts, as under ratification rules).
+- **Fatigue** — swimmers do not hold one speed for thirteen hours, so speed
+  through water fades exponentially towards a floor,
+  `v(t) = v0 · (1 − fade · (1 − e^(−t/6h)))`, losing `fade` of the starting speed
+  (default 12%) with a 6 h time constant. At the 3.0 km/h default that is
+  ~0.06 km/h per hour at first, settling near 2.64 km/h. The obvious first guess
+  — a constant linear decay, say 0.05 km/h per hour — is wrong at the tail: it
+  has no floor, so the distance a swimmer can ever cover through water is capped
+  at v0²/2k. Linear decay sends a 1.8 km/h swimmer to 30h52m instead of 18h07m
+  and stops a 1.6 km/h one finishing at all, which is an artefact of the
+  functional form rather than physiology.
+  The speed slider is therefore the speed at the *start*, not the average — the
+  panel shows the mean the swim actually works out to, which is what the
+  benchmark histogram compares against. A swim that used to be entered as a flat
+  2.8 km/h is a 3.0 km/h start fading 12%.
+  Worth knowing: at matched *mean* speed, fade barely moves the optimal track.
+  Across 2.4–3.6 km/h the chosen start time is identical and the leg headings
+  shift by 1–2°, because the tidal phase relative to the crossing duration is
+  what sets the track, and that is unchanged when the mean is held. Fade changes
+  how you read the speed number and it lengthens the crossing; it does not change
+  the plan.
 - **Optimiser** — Zermelo-style navigation solved pragmatically: grid search
   over start time (relative to HW Dover) and constant heading, then coordinate
   descent over 14 piecewise leg headings. Compare against "aim at Cap Gris-Nez".
@@ -65,14 +85,18 @@ everything else is local).
   depart/arrive are shown as Dover local (GMT/BST) clock times with a
   daylight-at-landfall check and night shading on the tide strip.
 
-Calibration checks out: 4.5 km/h ≈ 6h52m (record pace), 3.0–3.4 km/h ≈ 9–10.5h
-(top decile), 2.5–2.8 km/h ≈ 11–12.5h (median territory).
+Calibration checks out (starting speeds, springs, mean speed in brackets):
+4.8 km/h ≈ 7h22m (mean 4.56 — record pace), 3.45–3.65 km/h ≈ 9h47m–10h25m
+(mean 3.2–3.4, top decile), 2.9–3.2 km/h ≈ 11h24m–13h01m (mean 2.7–3.0, median
+territory).
 
 Validated against a real swim — Bronagh Marley, 14 Aug 2026, Shakespeare Beach →
-Cap Gris-Nez in 11h22m starting 00:42 BST (HW−0:15). At 3.1 km/h the optimiser
-picks a 01:28 start (HW+0:47) and lands at Cap Gris-Nez after 10h54m; forcing her
-real start time gives 11h07m to the cape with the same track shape (east on the
-flood, then south).
+Cap Gris-Nez in 11h22m starting 00:42 BST (HW−0:15). At a 3.3 km/h start with
+the default fade — a 3.1 km/h average, her real pace — the optimiser picks a
+HW+0:35 start and lands at Cap Gris-Nez after 10h59m; forcing her real start
+time gives 11h11m to the cape with the same track shape (east on the flood, then
+south). The same anchor held before fade existed, at a flat 3.1 km/h: 10h54m
+optimised, 11h07m forced.
 
 ## Files
 
@@ -88,4 +112,4 @@ Educational toy — not for navigation.
 Live: https://silvanm.github.io/channel-swim-simulator/
 
 ---
-Updated 2026-08-24 · fbc25dd
+Updated 2026-08-26 · f331930

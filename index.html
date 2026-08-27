@@ -158,6 +158,7 @@ input[type=date] {
 
 /* instruments */
 .inst { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.inst .cell.wide { grid-column: span 3; }
 .inst .cell {
   background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
   padding: 8px 10px;
@@ -238,9 +239,14 @@ main { flex: 1; position: relative; height: 100vh; }
   <section>
     <h2>Swimmer</h2>
     <div class="ctl">
-      <label>Speed through water <b id="speedlabel">2.8 km/h</b></label>
-      <input type="range" id="speed" min="2.0" max="5.2" step="0.1" value="2.8">
+      <label>Speed through water at the start <b id="speedlabel">3.0 km/h</b></label>
+      <input type="range" id="speed" min="2.2" max="5.6" step="0.1" value="3.0">
       <div class="hint" id="pacelabel"></div>
+    </div>
+    <div class="ctl">
+      <label>Fade over the swim <b id="fadelabel">12%</b></label>
+      <input type="range" id="fade" min="0" max="50" step="1" value="12">
+      <div class="hint" id="fadehint"></div>
     </div>
     <div class="ctl">
       <label>Start point</label>
@@ -297,6 +303,8 @@ main { flex: 1; position: relative; height: 100vh; }
         <div class="cell"><div class="k">Landfall light</div><div class="v" id="daylight">–</div></div>
         <div class="cell"><div class="k">Over ground</div><div class="v" id="ground">–</div></div>
         <div class="cell"><div class="k">Through water</div><div class="v" id="water">–</div></div>
+        <div class="cell"><div class="k">Mean speed</div><div class="v" id="meanspeed">–</div></div>
+        <div class="cell"><div class="k">Start → finish</div><div class="v" id="fadespeed">–</div></div>
       </div>
     </div>
   </section>
@@ -308,8 +316,9 @@ main { flex: 1; position: relative; height: 100vh; }
       <div class="cell"><div class="k">Stream</div><div class="v"><span id="setarrow">➤</span><span id="current">–</span></div></div>
       <div class="cell"><div class="k">Heading</div><div class="v" id="heading">–</div></div>
       <div class="cell"><div class="k">SOG</div><div class="v" id="sog">–</div></div>
+      <div class="cell"><div class="k">STW</div><div class="v" id="stw">–</div></div>
       <div class="cell"><div class="k">To France</div><div class="v" id="togo">–</div></div>
-      <div class="cell"><div class="k">Elapsed</div><div class="v" id="clock2">–</div></div>
+      <div class="cell wide"><div class="k">Elapsed</div><div class="v" id="clock2">–</div></div>
     </div>
   </section>
 
@@ -330,6 +339,9 @@ main { flex: 1; position: relative; height: 100vh; }
     Calendar mode takes HW Dover and the tidal range from an M2+S2+N2 harmonic model
     fitted to published Dover predictions (~15 min); clock times are Dover local
     (GMT/BST). Water temperature from NASA JPL MUR SST v4.1 monthly composites.
+    Swimmer speed fades exponentially towards a floor (12% of the starting speed
+    by the end, 6 h time constant), so the slider is the speed at the start and
+    "mean speed" is what it averages out to.
     Educational toy — not for navigation. · Benchmarks: English Channel Swim
     Database (solos, public edition).
   </footer>

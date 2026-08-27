@@ -124,8 +124,31 @@
     return { u: mps * Math.sin(brg), v: mps * Math.cos(brg) };
   }
 
+  // ---- fatigue ----
+  // Swimmers do not hold one speed for 13 hours. Stroke rate drops over the
+  // first hours as glycogen and cold bite, then settles: the decline is steep
+  // early and flattens out, so the model is exponential towards a floor,
+  //     v(t) = v0 * (1 - fade * (1 - e^(-t/FADE_TAU))),
+  // losing `fade` of the starting speed asymptotically with a FADE_TAU time
+  // constant. The initial slope is v0*fade/FADE_TAU — 0.06 km/h per hour at the
+  // 3.0 km/h, 12% default.
+  //
+  // A linear decay is the obvious first guess and it is wrong at the tail: it
+  // has no floor, so speed heads for zero and the distance a swimmer can ever
+  // cover through water is capped at v0^2/2k. At 0.05 km/h per hour a 1.8 km/h
+  // swimmer takes 30h52 instead of 18h07 and a 1.6 km/h one can never finish at
+  // all — an artefact of the functional form, not physiology.
+  //
+  // Note this makes `speedMs` the speed at the *start*, not the average. A swim
+  // planned at a 2.8 km/h average is a 3.0 km/h start with the default fade.
+  const FADE_TAU = 6.0;                 // h — time constant of the decline
+  const speedAt = (v0, fade, t) =>
+    v0 * (1 - (fade || 0) * (1 - Math.exp(-t / FADE_TAU)));
+
   // ---- route integrator ----
-  // opts: { startLL, t0, speedMs, spring, headingFn(elapsedH, posXY), maxHours }
+  // opts: { startLL, t0, speedMs, spring, fade, headingFn(elapsedH, posXY), maxHours }
+  // speedMs is the speed through water at the start; `fade` (0..1) is the
+  // fraction of it lost to fatigue by the end of a long swim.
   // headingFn returns bearing in radians (0 = north, clockwise).
   function simulate(opts) {
     const maxH = opts.maxHours || 40;
@@ -144,6 +167,7 @@
     record();
 
     let sinceSample = 0;
+    let distWater = 0;                  // km through the water
     while (elapsed < maxH) {
       const fr = nearestSeg(FRA_XY, p);
       if (fr.d < minDistFr) minDistFr = fr.d;
@@ -159,7 +183,9 @@
       }
       const dt = fr.d < 1.0 ? 20 : 120;               // s, finer near the coast
       const h = opts.headingFn(elapsed, p);
-      const sw = { x: opts.speedMs * Math.sin(h), y: opts.speedMs * Math.cos(h) };
+      // midpoint speed, to stay second-order with the RK2 step below
+      const vSw = speedAt(opts.speedMs, opts.fade, elapsed + dt / 7200);
+      const sw = { x: vSw * Math.sin(h), y: vSw * Math.cos(h) };
 
       // RK2 midpoint
       const c1 = current(p, opts.t0 + elapsed, opts.spring);
@@ -170,6 +196,7 @@
 
       p = { x: p.x + st.x, y: p.y + st.y };
       distGround += Math.hypot(st.x, st.y);
+      distWater += vSw * dt / 1000;
       elapsed += dt / 3600;
       sinceSample += dt;
       if (sinceSample >= 120) { record(); sinceSample = 0; }
@@ -190,8 +217,10 @@
 
     return {
       landed, hours: elapsed, path, landLL, distGround,
-      distWater: opts.speedMs * elapsed * 3.6, minDistFr, landedAtCape, maxSW,
-      landNE,
+      distWater, minDistFr, landedAtCape, maxSW, landNE,
+      startSpeed: opts.speedMs * 3.6,
+      endSpeed: speedAt(opts.speedMs, opts.fade, elapsed) * 3.6,
+      meanSpeed: elapsed > 0 ? distWater / elapsed : opts.speedMs * 3.6,
     };
   }
 
@@ -295,7 +324,8 @@
   }
 
   function optimize(cfg, fixedT0) {
-    const base = { startLL: cfg.startLL, speedMs: cfg.speedMs, spring: cfg.spring };
+    const base = { startLL: cfg.startLL, speedMs: cfg.speedMs, spring: cfg.spring,
+                   fade: cfg.fade };
     const wrapT0 = (t0) => ((t0 % T_M2) + T_M2) % T_M2;
     const run = (t0, fn) => simulate({ ...base, t0: wrapT0(t0), headingFn: fn });
 
@@ -379,7 +409,7 @@
   return {
     KN, T_M2, ORIGIN, ENGLAND, FRANCE, CAPE, START_POINTS,
     toXY, toLL, isWater, nearestSeg, ENG_XY, FRA_XY,
-    tideSignal, current, simulate, optimize,
+    tideSignal, current, simulate, optimize, speedAt, FADE_TAU,
     constHeading, legHeading, LEG_H, N_LEGS,
   };
 });

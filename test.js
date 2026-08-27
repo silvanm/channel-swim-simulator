@@ -23,7 +23,7 @@ const score = (r) =>
   SW_PENALTY * r.maxSW + NE_PENALTY * Math.max(0, r.landNE - NE_FREE);
 
 const START = SIM.START_POINTS.shakespeare;
-const cfg = (kmh, spring) => ({ startLL: START, speedMs: kmh / 3.6, spring });
+const cfg = (kmh, spring, fade) => ({ startLL: START, speedMs: kmh / 3.6, spring, fade });
 
 function bestConstant(kmh, spring, t0) {
   let best = { s: Infinity };
@@ -95,6 +95,66 @@ for (const strategy of ['optimal', 'constant']) {
     r.landedAtCape && r.hours > 10 && r.hours < 12,
     `${r.hours.toFixed(2)} h, start HW+${R.optimal.t0.toFixed(2)}, ` +
     (r.landedAtCape ? 'Cap Gris-Nez' : 'not the cape'));
+}
+
+// 5. the fade model. `fade` is the fraction of the starting speed lost by the
+//    end, approached exponentially with a 6 h time constant.
+{
+  const v0 = 3.0;
+  const at = (t) => SIM.speedAt(v0, 0.12, t);
+  check('fade leaves the starting speed untouched at t=0', Math.abs(at(0) - v0) < 1e-12);
+  check('fade is monotonic and bounded below by the floor',
+    at(1) < at(0) && at(12) < at(1) && at(1e6) > v0 * 0.12 * 0.99,
+    `${at(0).toFixed(2)} -> ${at(6).toFixed(2)} @6h -> ${at(12).toFixed(2)} @12h ` +
+    `-> floor ${(v0 * 0.88).toFixed(2)}`);
+  check('fade 0 is a no-op', SIM.speedAt(v0, 0, 12) === v0 && SIM.speedAt(v0, undefined, 12) === v0);
+}
+
+// 6. no stall at the slow tail. This is the whole reason the decline is
+//    exponential-to-a-floor rather than linear: a linear 0.05 km/h per hour
+//    caps lifetime water distance at v0^2/2k, which sends a 1.8 km/h swimmer to
+//    30h52 (vs 18h07 unfatigued) and stops a 1.6 km/h one finishing at all.
+{
+  const r = SIM.optimize(cfg(1.9, 1.0, 0.12), null).optimal.result;
+  check('a very slow swimmer still lands, and never below the floor',
+    r.landed && r.hours < 20 && r.endSpeed > 1.9 * 0.88 - 1e-9,
+    `${r.hours.toFixed(2)} h, finishing at ${r.endSpeed.toFixed(2)} km/h`);
+}
+
+// 7. re-basing. Fade makes the speed input the speed at the *start*, so the
+//    calibration has to move with it: a swim that used to be entered as a
+//    2.8 km/h constant is a 3.0 km/h start fading 12%, and must still take
+//    about as long. If this drifts, every calibration figure in the README and
+//    the placement on the benchmark histogram is off.
+for (const [flat, start] of [[2.4, 2.57], [2.8, 3.0], [3.1, 3.32], [3.6, 3.85]]) {
+  const a = SIM.optimize(cfg(flat, 1.0), null).optimal.result;
+  const b = SIM.optimize(cfg(start, 1.0, 0.12), null).optimal.result;
+  check(`${start} km/h fading 12% matches a flat ${flat} km/h`,
+    Math.abs(b.meanSpeed - flat) < 0.05 && Math.abs(b.hours - a.hours) < 0.25,
+    `${a.hours.toFixed(2)} h flat vs ${b.hours.toFixed(2)} h fading ` +
+    `(mean ${b.meanSpeed.toFixed(2)} km/h)`);
+}
+
+// 8. the Marley anchor again, in the re-based units: 3.1 km/h average is a
+//    3.3 km/h start with the default fade.
+{
+  const R = SIM.optimize(cfg(3.3, 1.0, 0.12), null);
+  const r = R.optimal.result;
+  check('3.3 km/h start, 12% fade reproduces the Marley crossing',
+    r.landedAtCape && r.hours > 10 && r.hours < 12,
+    `${r.hours.toFixed(2)} h, mean ${r.meanSpeed.toFixed(2)} km/h, ` +
+    `start HW+${R.optimal.t0.toFixed(2)}`);
+}
+
+// 9. distWater is integrated now, not speed*time. With no fade the two must
+//    still agree, or the "through water" figure silently changed meaning.
+{
+  const r = SIM.simulate({
+    ...cfg(2.8, 1.0), t0: 4.0, headingFn: SIM.constHeading(140),
+  });
+  check('distWater with no fade is still speed x time',
+    Math.abs(r.distWater - 2.8 * r.hours) < 0.05,
+    `${r.distWater.toFixed(2)} km vs ${(2.8 * r.hours).toFixed(2)} km`);
 }
 
 console.log(failed ? `\n${failed} test(s) failed` : '\nall tests passed');

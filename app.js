@@ -197,7 +197,8 @@ const state = {
   useDate: true,
   dateStr: todayStr(),
   astro: null,        // {dayStart, hws, sun, moon}
-  speedKmh: 2.8,
+  speedKmh: 3.0,      // through the water at the *start* — see the fade model
+  fade: 0.12,         // fraction of it lost to fatigue by the end
   spring: 1.0,
   startKey: 'shakespeare',
   manualStart: false,
@@ -382,7 +383,9 @@ function applyDate() {
 function compute() {
   applyDate();
   const start = SIM.START_POINTS[state.startKey];
-  const cfg = { startLL: start, speedMs: state.speedKmh / 3.6, spring: state.spring };
+  const cfg = {
+    startLL: start, speedMs: state.speedKmh / 3.6, spring: state.spring, fade: state.fade,
+  };
   state.results = SIM.optimize(cfg, state.manualStart ? state.t0Manual : null);
   const O = state.results.optimal;
   state.view = { result: O.result, t0: O.t0, headingFn: SIM.legHeading(O.legsDeg) };
@@ -437,6 +440,9 @@ function renderAll() {
   }
   $('ground').textContent = r.distGround.toFixed(1) + ' km';
   $('water').textContent = r.distWater.toFixed(1) + ' km';
+  $('meanspeed').textContent = r.meanSpeed.toFixed(2) + ' km/h';
+  $('fadespeed').textContent =
+    `${r.startSpeed.toFixed(1)} → ${r.endSpeed.toFixed(2)} km/h`;
   $('landing').textContent = r.landed
     ? (r.landedAtCape ? 'Cap Gris-Nez' : `${r.landLL.lat.toFixed(3)}°N ${r.landLL.lng.toFixed(3)}°E`)
     : 'swept past — swim faster or retime';
@@ -490,6 +496,7 @@ function updatePlayback(t) {
   const a = SIM.toXY(p.lat, p.lng), b = SIM.toXY(p2.lat, p2.lng);
   const dt = p2.t - p.t;
   $('sog').textContent = dt > 0 ? (Math.hypot(b.x - a.x, b.y - a.y) / dt).toFixed(1) + ' km/h' : '–';
+  $('stw').textContent = (SIM.speedAt(state.speedKmh, state.fade, state.simT)).toFixed(2) + ' km/h';
 
   drawArrows();
   drawTideStrip();
@@ -638,6 +645,12 @@ function bind() {
     updateSpeedLabel();
     requestCompute();
   });
+  const fade = $('fade');
+  fade.addEventListener('input', () => {
+    state.fade = +fade.value / 100;
+    updateSpeedLabel();
+    requestCompute();
+  });
   const dateEl = $('startdate');
   dateEl.value = state.dateStr;
   dateEl.addEventListener('change', () => {
@@ -698,7 +711,15 @@ function updateSpeedLabel() {
   const v = state.speedKmh;
   const pace = 360 / v; // seconds per 100 m
   $('speedlabel').textContent = `${v.toFixed(1)} km/h`;
-  $('pacelabel').textContent = `${(v / 3.6).toFixed(2)} m/s · ${Math.floor(pace / 60)}:${String(Math.round(pace % 60)).padStart(2, '0')} /100m`;
+  $('pacelabel').textContent =
+    `${(v / 3.6).toFixed(2)} m/s · ${Math.floor(pace / 60)}:${String(Math.round(pace % 60)).padStart(2, '0')} /100m at the start`;
+  const f = state.fade;
+  $('fadelabel').textContent = `${Math.round(f * 100)}%`;
+  $('fadehint').textContent = f === 0
+    ? 'no fatigue — speed held for the whole crossing'
+    : `speed lost to fatigue and cold, approached with a ${SIM.FADE_TAU.toFixed(0)} h ` +
+      `time constant · about ${(v * f / SIM.FADE_TAU).toFixed(2)} km/h per hour at first, ` +
+      `settling near ${(v * (1 - f)).toFixed(2)} km/h`;
 }
 
 // ---- boot ----
