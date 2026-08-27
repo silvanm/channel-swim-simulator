@@ -455,10 +455,14 @@ function renderAll() {
       if (hi <= r.hours) below += n;
       else if (lo < r.hours) below += n * (r.hours - lo);
     });
+    // `below` counts the solos faster than this crossing, so the share this
+    // crossing beats is what is left over
     const pct = 100 * (1 - below / total);
     $('bench').textContent = pct > 99
-      ? 'slower than nearly all recorded solos'
-      : `faster than ${(100 - pct).toFixed(0)}% of ${REAL.count.toLocaleString('en-GB')} recorded solos`;
+      ? 'faster than nearly all recorded solos'
+      : pct < 1
+        ? 'slower than nearly all recorded solos'
+        : `faster than ${pct.toFixed(0)}% of ${REAL.count.toLocaleString('en-GB')} recorded solos`;
   } else $('bench').textContent = '';
 
   drawHistogram(r.landed ? r.hours : null);
