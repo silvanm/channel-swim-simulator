@@ -125,4 +125,4 @@ Educational toy — not for navigation.
 Live: https://silvanm.github.io/channel-swim-simulator/
 
 ---
-Updated 2026-09-02 · 1c85eeb
+Updated 2026-09-02 · dd6521a
