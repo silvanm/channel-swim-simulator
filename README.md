@@ -82,8 +82,21 @@ everything else is local).
   harmonic model fitted to 56 published Dover high waters (~12 min RMS
   in-sample, ~16 min out-of-sample); the tidal range from the same model sets
   the stream strength. Departure is scheduled near 03:00 (night start), and
-  depart/arrive are shown as Dover local (GMT/BST) clock times with a
-  daylight-at-landfall check and night shading on the tide strip.
+  depart/arrive are shown as Dover local (GMT/BST) clock times.
+- **Sun** — sunrise and sunset for the strait (51.02 N, 1.45 E) from the standard
+  sunrise equation: mean solar noon from the day number, equation-of-centre
+  correction, then the hour angle at which the sun's centre reaches −0.833°
+  (rim on the horizon, refraction included) or −6° (civil twilight). Events are
+  computed as real UTC instants rather than clock hours, which is the whole
+  point: a crossing runs through local midnight and the viewer may sit in any
+  time zone, and a clock-hour figure gets both wrong. Accurate to a minute or
+  two against published Dover times; the earlier fixed-solar-noon approximation
+  was out by up to a quarter of an hour because it ignored the equation of time
+  and the GMT/BST difference. The panel gives the day's sunrise/sunset, the
+  light at landfall (daylight / twilight / darkness) and how much of the swim
+  falls in real darkness; the tide strip shades night dark and civil twilight
+  half-dark and ticks the two events; the map marks where on the track the
+  sunrise or sunset catches the swimmer.
 
 Calibration checks out (starting speeds, springs, mean speed in brackets):
 4.8 km/h ≈ 7h22m (mean 4.56 — record pace), 3.45–3.65 km/h ≈ 9h47m–10h25m
@@ -112,4 +125,4 @@ Educational toy — not for navigation.
 Live: https://silvanm.github.io/channel-swim-simulator/
 
 ---
-Updated 2026-08-27 · ece72e0
+Updated 2026-09-02 · 1c85eeb

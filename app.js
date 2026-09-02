@@ -169,18 +169,75 @@ const ASTRO = (() => {
     return { c: spline(0), lo: spline(1), hi: spline(2) };
   }
 
-  function sun(dayStartMs) {
-    const d = new Date(dayStartMs);
-    const start = new Date(d.getFullYear(), 0, 0);
-    const doy = Math.round((dayStartMs - start.getTime()) / 86400000);
-    const phi = 51.05 * Math.PI / 180;
-    const dec = -23.44 * Math.PI / 180 * Math.cos(2 * Math.PI * (doy + 10) / 365);
-    const cw = Math.max(-1, Math.min(1, -Math.tan(phi) * Math.tan(dec)));
-    const half = Math.acos(cw) * 180 / Math.PI / 15;
-    const noonH = 12.92;                          // solar noon Dover in BST
-    return { rise: noonH - half, set: noonH + half };
+  // --- sunrise / sunset -----------------------------------------------------
+  // The standard low-precision sunrise equation: mean solar noon from the day
+  // number, equation-of-centre correction for the eccentric orbit, then the
+  // hour angle at which the sun's centre reaches a given altitude (−0.833° for
+  // the rim on the horizon with refraction, −6° for civil twilight). Events are
+  // returned as real UTC instants rather than clock hours, which is what makes
+  // them usable here: a crossing runs through local midnight and the viewer may
+  // sit in any time zone, both of which a clock-hour figure gets wrong. Worth
+  // about a minute at Dover — the old fixed-solar-noon approximation was out by
+  // up to a quarter of an hour, because it ignored both the equation of time
+  // and the difference between GMT and BST.
+  const LAT = 51.02, LON = 1.45;                  // Dover Strait, English side
+  const J2000 = 2451545.0;
+  const jd2ms = (j) => (j - 2440587.5) * 86400e3;
+  const ms2jd = (ms) => ms / 86400e3 + 2440587.5;
+
+  // sun events for the Dover-local day containing `ms`
+  function sun(ms) {
+    const p = ukParts(ms);
+    const jd = ms2jd(Date.UTC(+p.year, p.month - 1, +p.day, 12));
+    const lw = -LON;                              // west-positive longitude
+    const n = Math.round(jd - J2000 - 0.0009 - lw / 360);
+    const Jm = J2000 + 0.0009 + lw / 360 + n;     // mean solar noon
+    const M = (357.5291 + 0.98560028 * (Jm - J2000)) % 360;
+    const C = 1.9148 * sind(M) + 0.02 * sind(2 * M) + 0.0003 * sind(3 * M);
+    const lam = (M + C + 282.9372) % 360;         // ecliptic longitude
+    const transit = Jm + 0.0053 * sind(M) - 0.0069 * sind(2 * lam);
+    const sinDec = sind(lam) * sind(23.4397);
+    const cosDec = Math.sqrt(1 - sinDec * sinDec);
+    const pair = (altDeg) => {
+      const c = (sind(altDeg) - sind(LAT) * sinDec) / (Math.cos(LAT * D2R) * cosDec);
+      if (c <= -1 || c >= 1) return null;          // no such crossing that day
+      const w = Math.acos(c) / D2R / 360;          // hour angle, in days
+      return [jd2ms(transit - w), jd2ms(transit + w)];
+    };
+    const d = pair(-0.833), t = pair(-6);
+    return {
+      rise: d && d[0], set: d && d[1],
+      dawn: t && t[0], dusk: t && t[1],
+      noon: jd2ms(transit),
+    };
   }
-  return { ageAt, springFactor, rangeAt, moonInfo, hwTimes, hwNear, seaTemp, sun };
+
+  // 'day' | 'twilight' | 'night' at an instant
+  function lightAt(ms) {
+    const s = sun(ms);
+    if (s.rise == null) return 'day';              // midnight sun (not here)
+    if (ms >= s.rise && ms <= s.set) return 'day';
+    if (s.dawn != null && ms >= s.dawn && ms <= s.dusk) return 'twilight';
+    return 'night';
+  }
+
+  // sunrises and sunsets falling inside [a, b)
+  function sunEventsIn(a, b) {
+    const out = [];
+    for (let d = a - 12 * 3600e3; d < b + 12 * 3600e3; d += 86400e3) {
+      const s = sun(d);
+      for (const k of ['rise', 'set']) {
+        if (s[k] != null && s[k] >= a && s[k] < b && !out.some(e => e.ms === s[k])) {
+          out.push({ kind: k, ms: s[k] });
+        }
+      }
+    }
+    return out.sort((x, y) => x.ms - y.ms);
+  }
+  return {
+    ageAt, springFactor, rangeAt, moonInfo, hwTimes, hwNear, seaTemp,
+    sun, lightAt, sunEventsIn,
+  };
 })();
 
 // label for a stream-strength multiplier (1.0 = mean springs, ~0.41 = mean neaps)
@@ -215,6 +272,16 @@ const fmtH = (h) => `${Math.floor(h)}h ${String(Math.round((h % 1) * 60)).padSta
 const fmtClock = (ms) => {
   const p = ukParts(ms);
   return `${p.hour === '24' ? '00' : p.hour}:${p.minute}`;
+};
+const LIGHT = { day: '\u2600 daylight', twilight: '\u25d6 twilight', night: '\u263e darkness' };
+// hours of a swim spent with the sun below the civil-twilight limit
+const darkHours = (startMs, hours) => {
+  const step = 5 / 60;                          // 5-minute sampling
+  let dark = 0;
+  for (let t = step / 2; t < hours; t += step) {
+    if (ASTRO.lightAt(startMs + t * 3600e3) === 'night') dark += step;
+  }
+  return Math.min(dark, hours);
 };
 const fmtHW = (t) => {
   let x = ((t % SIM.T_M2) + SIM.T_M2) % SIM.T_M2;
@@ -303,6 +370,7 @@ const layers = {
   full: L.polyline([], { color: '#ff6b4a', weight: 1.5, opacity: 0.3, interactive: false }).addTo(map),
   trail: L.polyline([], { color: '#ff6b4a', weight: 2.5, opacity: 0.95, interactive: false }).addTo(map),
   ticks: L.layerGroup().addTo(map),
+  sun: L.layerGroup().addTo(map),
   swimmer: L.circleMarker([51.1, 1.3], {
     radius: 6, color: '#0a1220', weight: 2, fillColor: '#ff6b4a', fillOpacity: 1, interactive: false,
   }).addTo(map),
@@ -371,11 +439,10 @@ function applyDate() {
   $('mooninfo').textContent = `${m.emoji} ${m.name}`;
   const dayHW = state.astro.hws.filter(h => h >= dayStart && h < dayStart + 86400e3);
   const s = state.astro.sun;
-  const fh = (h) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round(h % 1 * 60)).padStart(2, '0')}`;
   const month = +ukParts(dayStart + 12 * 3600e3).month;
   const t = state.astro.sea;
   $('datehint').textContent =
-    `HW Dover ≈ ${dayHW.map(fmtClock).join(' / ')} · sunrise ${fh(s.rise)} · sunset ${fh(s.set)}` +
+    `HW Dover ≈ ${dayHW.map(fmtClock).join(' / ')} · sunrise ${fmtClock(s.rise)} · sunset ${fmtClock(s.set)}` +
     (month >= 6 && month <= 9 ? '' : ' · outside the usual Jun–Sep season');
   $('seatemp').textContent = `${t.c.toFixed(1)} °C`;
   $('seahint').textContent =
@@ -423,25 +490,44 @@ function renderAll() {
   // headline stats
   $('eta').textContent = r.landed ? fmtH(r.hours) : 'no landfall';
   $('eta').classList.toggle('dnf', !r.landed);
+  layers.sun.clearLayers();
   if (state.useDate && state.astro) {
     v.clockStart = clockFor(v.t0);
     $('startTime').textContent = `${fmtClock(v.clockStart)} · ${fmtHW(v.t0)}`;
+    const s = ASTRO.sun(v.clockStart);
+    $('suntimes').textContent = `↑ ${fmtClock(s.rise)} · ↓ ${fmtClock(s.set)}`;
     if (r.landed) {
       const arr = v.clockStart + r.hours * 3600e3;
-      const nextDay = new Date(arr).getDate() !== new Date(v.clockStart).getDate();
+      const nextDay = ukParts(arr).day !== ukParts(v.clockStart).day;
       $('arrive').textContent = fmtClock(arr) + (nextDay ? ' +1d' : '');
-      const ah = new Date(arr).getHours() + new Date(arr).getMinutes() / 60;
-      const s = state.astro.sun;
-      $('daylight').textContent = ah >= s.rise && ah <= s.set ? '☀ daylight' : '☾ darkness';
+      $('daylight').textContent = LIGHT[ASTRO.lightAt(arr)];
+      $('darkhours').textContent = fmtH(darkHours(v.clockStart, r.hours));
+      // sunrise / sunset marked where they catch the swimmer
+      for (const e of ASTRO.sunEventsIn(v.clockStart, arr)) {
+        const h = (e.ms - v.clockStart) / 3600e3;
+        const p = posAt(r.path, h);
+        L.marker([p.lat, p.lng], {
+          icon: L.divIcon({
+            className: '',
+            html: `<div class="sunfix"><span>${e.kind === 'rise' ? '☀' : '☾'}</span>`
+              + `<i>${fmtClock(e.ms)}</i></div>`,
+            iconSize: null,
+          }),
+          interactive: false,
+        }).addTo(layers.sun);
+      }
     } else {
       $('arrive').textContent = '–';
       $('daylight').textContent = '–';
+      $('darkhours').textContent = '–';
     }
   } else {
     v.clockStart = null;
     $('startTime').textContent = fmtHW(v.t0);
     $('arrive').textContent = '–';
     $('daylight').textContent = '–';
+    $('suntimes').textContent = '–';
+    $('darkhours').textContent = '–';
   }
   $('ground').textContent = r.distGround.toFixed(1) + ' km';
   $('water').textContent = r.distWater.toFixed(1) + ' km';
@@ -585,13 +671,12 @@ function drawTideStrip() {
     ? (t) => v.clockStart + (t - v.t0) * 3600e3
     : null;
   if (clockOf) {
-    const s = state.astro.sun;
-    ctx.fillStyle = 'rgba(4,8,16,0.5)';
     for (let px = 0; px < W; px += 2) {
       const t = from + (to - from) * px / W;
-      const d = new Date(clockOf(t));
-      const h = d.getHours() + d.getMinutes() / 60;
-      if (h < s.rise || h > s.set) ctx.fillRect(px, 8, 2, H - 24);
+      const light = ASTRO.lightAt(clockOf(t));
+      if (light === 'day') continue;
+      ctx.fillStyle = light === 'night' ? 'rgba(4,8,16,0.5)' : 'rgba(4,8,16,0.22)';
+      ctx.fillRect(px, 8, 2, H - 24);
     }
   }
   // swim interval
@@ -611,6 +696,17 @@ function drawTideStrip() {
     ctx.strokeStyle = 'rgba(143,163,196,0.25)';
     ctx.beginPath(); ctx.moveTo(X(t), 8); ctx.lineTo(X(t), H - 16); ctx.stroke();
     ctx.fillText('HW', X(t), clockOf ? 16 : H - 4);
+  }
+  // sunrise / sunset ticks
+  if (clockOf) {
+    for (const e of ASTRO.sunEventsIn(clockOf(from), clockOf(to))) {
+      const t = v.t0 + (e.ms - v.clockStart) / 3600e3;
+      ctx.strokeStyle = 'rgba(240,196,96,0.55)';
+      ctx.beginPath(); ctx.moveTo(X(t), 8); ctx.lineTo(X(t), H - 16); ctx.stroke();
+      ctx.fillStyle = 'rgba(240,196,96,0.95)';
+      ctx.fillText(e.kind === 'rise' ? '\u2600' : '\u263e', X(t), 28);
+    }
+    ctx.fillStyle = 'rgba(143,163,196,0.9)';
   }
   // wall-clock axis labels every 6 h when coupled to a date
   if (clockOf) {

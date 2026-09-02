@@ -201,6 +201,9 @@ main { flex: 1; position: relative; height: 100vh; }
   font-weight: 600;
 }
 .pin-land { background: var(--accent); color: #fff; }
+.sunfix { color: #f0c460; font-family: 'IBM Plex Mono', monospace; white-space: nowrap; transform: translate(-6px, -8px); }
+.sunfix span { font-size: 12px; }
+.sunfix i { font-style: normal; font-size: 9px; color: var(--cream); opacity: 0.85; margin-left: 2px; }
 
 /* time bar */
 #timebar {
@@ -277,8 +280,8 @@ main { flex: 1; position: relative; height: 100vh; }
       <input type="range" id="springf" min="0.40" max="1.15" step="0.05" value="1.0">
       <div class="hint">uncheck "tide from date" to set the spring–neap cycle by hand</div>
     </div>
-    <canvas id="tide" aria-label="Mid-strait tidal stream over the swim window: alternating northeast and southwest flow, roughly sinusoidal with a 12.4 hour period. The swim interval is shaded and a cursor marks the current playback time."></canvas>
-    <div class="chartcap">Mid-strait stream (kn) · <span style="color:var(--tide)">NE-going above</span> the line, SW-going below · orange band = your swim · dark band = night</div>
+    <canvas id="tide" aria-label="Mid-strait tidal stream over the swim window: alternating northeast and southwest flow, roughly sinusoidal with a 12.4 hour period. The swim interval is shaded, night and twilight are shaded darker, and a cursor marks the current playback time."></canvas>
+    <div class="chartcap">Mid-strait stream (kn) · <span style="color:var(--tide)">NE-going above</span> the line, SW-going below · orange band = your swim · dark band = night, half-dark = civil twilight, ☀/☾ = sunrise/sunset</div>
     <div class="manualrow">
       <input type="checkbox" id="manual">
       <span>fix start time manually</span>
@@ -301,6 +304,8 @@ main { flex: 1; position: relative; height: 100vh; }
         <div class="cell"><div class="k">Arrive</div><div class="v" id="arrive">–</div></div>
         <div class="cell"><div class="k">Landing</div><div class="v" id="landing">–</div></div>
         <div class="cell"><div class="k">Landfall light</div><div class="v" id="daylight">–</div></div>
+        <div class="cell"><div class="k">Sunrise / sunset</div><div class="v" id="suntimes">–</div></div>
+        <div class="cell"><div class="k">Swim in the dark</div><div class="v" id="darkhours">–</div></div>
         <div class="cell"><div class="k">Over ground</div><div class="v" id="ground">–</div></div>
         <div class="cell"><div class="k">Through water</div><div class="v" id="water">–</div></div>
         <div class="cell"><div class="k">Mean speed</div><div class="v" id="meanspeed">–</div></div>
